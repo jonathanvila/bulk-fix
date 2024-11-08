@@ -89,6 +89,11 @@
             <artifactId>vaadin-testbench-junit5</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.sonarsource.sonarqube</groupId>
+            <artifactId>sonar-ws</artifactId>
+            <version>10.7.0.96327</version>
+          </dependency>
     </dependencies>
 
     <build>
