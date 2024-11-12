@@ -163,8 +163,8 @@ public class BulkIssuesView extends VerticalLayout {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
                     .GET()
-                    .header("Origin", "http://localhost:9000")
-                    .header("Referer", "http://localhost:9000/")
+                    .header("Origin", sonarqubeUrlEdit.getValue())
+                    .header("Referer", sonarqubeUrlEdit.getValue())
                     .build();
             HttpClient client = HttpClient.newHttpClient();
             try {
