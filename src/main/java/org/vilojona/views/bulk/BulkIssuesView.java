@@ -26,14 +26,18 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.grid.Grid.SelectionMode;
 import com.vaadin.flow.component.html.NativeLabel;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.progressbar.ProgressBar;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.data.renderer.ComponentRenderer;
 import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
@@ -62,6 +66,7 @@ public class BulkIssuesView extends VerticalLayout {
     private TextField folderEdit;
     private Button applyFixesButton;
     private List<Issue> issuesWithCodeFixList;
+    private TextField fileNameEdit;
 
     public BulkIssuesView() {
 
@@ -72,7 +77,6 @@ public class BulkIssuesView extends VerticalLayout {
         sonarqubeUserEdit = new TextField("User");
 
         sonarqubePasswordEdit = new TextField("Password");
-        
 
         sonarqubePanel.add(sonarqubeUrlEdit, sonarqubeUserEdit, sonarqubePasswordEdit);
 
@@ -97,27 +101,78 @@ public class BulkIssuesView extends VerticalLayout {
         getIssuesButton.addClickShortcut(Key.ENTER);
         issuesPanel.add(getIssuesButton);
 
-        numberOfIssuesFilteredLabel = new NativeLabel("Total Filtered Issues : ");
+        numberOfIssuesFilteredLabel = new NativeLabel("Total Project Issues : ");
         numberOfIssuesFilteredWithAIFixLabel = new NativeLabel("Total Filtered Issues and with AI Fix : ");
 
+        var exportButton = new Button("Export");
+        exportButton.addClickListener(e -> {
+            Notification.show("Exporting issues");
+            exportIssuesWithCodeFix();
+            Notification.show("Exporting issues finished");
+        });
+
         issuesGrid = new Grid<>();
+        issuesGrid.setSelectionMode(SelectionMode.SINGLE);
         issuesGrid.addColumn(Issue::getProject).setHeader("Project");
         issuesGrid.addColumn(Issue::getSeverity).setHeader("Severity");
         issuesGrid.addColumn(Issue::getRule).setHeader("Rule");
         issuesGrid.addColumn(Issue::getComponent).setHeader("File");
+        issuesGrid.addItemDoubleClickListener(e -> dialogIssue(issuesGrid.asSingleSelect().getValue()));
 
-        applyFixesButton = new Button("Apply Fixes");
+        applyFixesButton = new Button("Apply Selected Fixes");
         applyFixesButton.addClickListener(e -> {
-            processIssues();
             Notification.show("Processing fixes");
+            applyFixes();
+            Notification.show("Processing fixes finished");
         });
         applyFixesButton.addClickShortcut(Key.ENTER);
-
+        fileNameEdit = new TextField("Applied Fixes Output File");
+        fileNameEdit.setValue("codefix-issues-output-");
         add(sonarqubePanel, filterPanel, issuesPanel, numberOfIssuesFilteredLabel, numberOfIssuesFilteredWithAIFixLabel,
-                issuesGrid, applyFixesButton);
+                exportButton,
+                issuesGrid, fileNameEdit, applyFixesButton);
     }
 
-    private void processIssues() {
+    private void exportIssuesWithCodeFix() {
+        HttpClient client = HttpClient.newHttpClient();
+        String fileName = getOutputFileName() + "-exported.json";
+        try (var writer = new java.io.FileWriter(fileName, true)) {
+            writer.write("[\n");
+            issuesWithCodeFixList.forEach(issue -> {
+                try {
+                    var issueCodeFix = fetchAiSuggestionsForIssue(client, issue);
+                    writer.write(new ObjectMapper().writeValueAsString(issueCodeFix) + System.lineSeparator());
+                    writer.write(",\n");
+                } catch (IOException | InterruptedException e) {
+                    e.printStackTrace();
+                }
+            });
+            writer.write("]\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void dialogIssue(Issue issue) {
+        var dialog = new Dialog();
+        dialog.setWidth("400px");
+        dialog.setHeight("300px");
+
+        var layout = new VerticalLayout();
+        layout.add(new NativeLabel("Issue ID: " + issue.getKey()));
+        layout.add(new NativeLabel("Project: " + issue.getProject()));
+        layout.add(new NativeLabel("Severity: " + issue.getSeverity()));
+        layout.add(new NativeLabel("Rule: " + issue.getRule()));
+        layout.add(new NativeLabel("File: " + issue.getComponent()));
+
+        var closeButton = new Button("Close", e -> dialog.close());
+        layout.add(closeButton);
+
+        dialog.add(layout);
+        dialog.open();
+    }
+
+    private void applyFixes() {
         HttpClient client = HttpClient.newHttpClient();
 
         var port = findSonarLintPortByCheckingStatusAPI();
@@ -125,8 +180,7 @@ public class BulkIssuesView extends VerticalLayout {
             Notification.show("SonarLint not running");
             return;
         }
-
-        issuesWithCodeFixList.forEach(issue -> {
+        issuesGrid.getSelectedItems().forEach(issue -> {
             try {
                 var issueCodeFix = fetchAiSuggestionsForIssue(client, issue);
                 var codeFile = getCodeFile(issue.getComponent());
@@ -135,6 +189,43 @@ public class BulkIssuesView extends VerticalLayout {
                 e.printStackTrace();
             }
         });
+    }
+
+    private String createGitPatch(SonarLintSuggestion suggestion, String codeFile) {
+        // header
+        StringBuilder header = new StringBuilder();
+        header.append("From: ").append(sonarqubeUserEdit.getValue()).append("\n");
+        header.append("Date: ").append(java.time.LocalDate.now()).append("\n");
+        header.append("Subject: [PATCH] Fix issue ").append(suggestion.suggestionId()).append("\n\n");
+        header.append("---\n");
+
+        // modified files
+        int startLine = suggestion.fileEdit().changes().get(0).beforeLineRange().startLine();
+        int endLine = suggestion.fileEdit().changes().get(0).beforeLineRange().endLine();
+        var numberOfOldLines = endLine - startLine + 1;
+        var numberOfNewLines = suggestion.fileEdit().changes().get(0).after().split("\n").length;
+
+        var modifiedFiles = new StringBuilder();
+        modifiedFiles.append("a/").append(suggestion.fileEdit().path())
+                .append(" | ")
+                .append(numberOfOldLines + numberOfNewLines).append(" ")
+                .append("+".repeat(numberOfNewLines)).append("-".repeat(numberOfOldLines)).append("\n");
+
+        // hunk
+        var hunk = new StringBuilder();
+        hunk.append("@@ -")
+                .append(startLine).append(",").append(endLine).append(" ")
+                .append(" +").append(startLine).append(",").append(numberOfNewLines)
+                .append(" @@\n");
+
+        // lines
+        var lines = new StringBuilder();
+        lines.append(codeFile).append("\n");
+
+        // Patch
+        var patch = new StringBuilder();
+        patch.append(header).append(modifiedFiles).append(hunk).append(lines);
+        return patch.toString();
     }
 
     private String getCodeFile(String component) {
@@ -212,11 +303,30 @@ public class BulkIssuesView extends VerticalLayout {
         try {
             HttpResponse<String> response = client.send(sendCodeFixToSonarLintRequest, BodyHandlers.ofString());
             System.out.println(response.request().toString() + "\n" + response.body());
+
+            writeToFileAppliedCodeFix(issueCodeFix);
             Notification.show("Response from SonarLint: " + response.statusCode() + "\n" + response.body());
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
 
+    }
+
+    private void writeToFileAppliedCodeFix(AISuggestion issueCodeFix) {
+        String fileName = getOutputFileName() + "-applied.json";
+        try (var writer = new java.io.FileWriter(fileName, true)) {
+            writer.write(new ObjectMapper().writeValueAsString(issueCodeFix) + System.lineSeparator());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String getOutputFileName() {
+        String fileName = fileNameEdit.getValue() + projectEdit.getValue();
+        fileName += (severityCombo.getValue() != null) ? "-" + severityCombo.getValue() : "";
+        fileName += (folderEdit.getValue().isEmpty()) ? "" : "-" + folderEdit.getValue();
+        fileName += (branchEdit.getValue().isEmpty()) ? "" : "-" + branchEdit.getValue();
+        return fileName;
     }
 
     private String getFileFromComponent(String component) {
@@ -254,7 +364,7 @@ public class BulkIssuesView extends VerticalLayout {
 
         // to know the total number of issues
         var issuesListResponse = getListOfIssues(projectEdit.getValue(), "1", "1");
-        numberOfIssuesFilteredLabel.setText("Total Filtered Issues : " + issuesListResponse.getPaging().getTotal());
+        numberOfIssuesFilteredLabel.setText("Total Project Issues : " + issuesListResponse.getPaging().getTotal());
 
         // get all the issues, page by page
         // for each issue, check if it is for a file in the folder filtered
@@ -307,6 +417,10 @@ public class BulkIssuesView extends VerticalLayout {
                 .build();
         response = client.send(requestCheckIfIssueHasCodeFix, BodyHandlers.ofString());
         Notification.show("AI suggestions for issue " + issue.getKey() + " are: " + response.body());
+        if (response.body().contains("'message'")) {
+            Notification.show("Error " + issue.getKey() + " is: " + response.body());        
+            return null;
+        } 
         return new ObjectMapper().readValue(response.body(), AISuggestion.class);
     }
 
