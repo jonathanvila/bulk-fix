@@ -71,7 +71,7 @@ public class BulkIssuesView extends VerticalLayout {
     public BulkIssuesView() {
 
         sonarqubePanel = new HorizontalLayout();
-        sonarqubeUrlEdit = new TextField("SonarQube URL");
+        sonarqubeUrlEdit = new TextField("SonarQube Server URL");
         sonarqubeUrlEdit.setValue("http://localhost:9000");
 
         sonarqubeUserEdit = new TextField("User");
@@ -83,8 +83,8 @@ public class BulkIssuesView extends VerticalLayout {
         var filterPanel = new HorizontalLayout();
         projectEdit = new TextField("Project");
 
-        severityCombo = new ComboBox<>("Priority");
-        severityCombo.setItems("MINOR", "MAJOR", "CRITIAL", "BLOCKER");
+        severityCombo = new ComboBox<>("Severity");
+        severityCombo.setItems("INFO", "MINOR", "MAJOR", "CRITICAL", "BLOCKER");
         folderEdit = new TextField("Folder");
         branchEdit = new TextField("Branch");
         branchEdit.setValue("master");
@@ -111,7 +111,7 @@ public class BulkIssuesView extends VerticalLayout {
             Notification.show("Exporting issues finished");
         });
 
-        var openInSonarQubeButton = new Button("Open Selected Issue In SonarQube");
+        var openInSonarQubeButton = new Button("Open Selected Issue In SonarQube Server");
         openInSonarQubeButton.addClickListener(e -> {
             var selectedIssue = issuesGrid.asSingleSelect().getValue();
             if (selectedIssue != null) {
@@ -129,18 +129,18 @@ public class BulkIssuesView extends VerticalLayout {
         issuesGrid.addColumn(Issue::getComponent).setHeader("File");
         issuesGrid.addItemDoubleClickListener(e -> dialogIssue(issuesGrid.asSingleSelect().getValue()));
 
-        applyFixesButton = new Button("Send Selected Fix to Sonarlint");
+        applyFixesButton = new Button("Send Selected Fix to SonarQube IDE");
         applyFixesButton.addClickListener(e -> {
             Notification.show("Processing fixes");
             applyFixes();
             Notification.show("Processing fixes finished");
         });
         applyFixesButton.addClickShortcut(Key.ENTER);
-        fileNameEdit = new TextField("Applied Fixes Output File");
+        fileNameEdit = new TextField("Files Prefix");
         fileNameEdit.setValue("codefix-issues-output-");
-        add(sonarqubePanel, filterPanel, issuesPanel, numberOfIssuesFilteredLabel, numberOfIssuesFilteredWithAIFixLabel,
+        add(sonarqubePanel, filterPanel, fileNameEdit, issuesPanel, numberOfIssuesFilteredLabel, numberOfIssuesFilteredWithAIFixLabel,
                 exportButton, openInSonarQubeButton,
-                issuesGrid, fileNameEdit, applyFixesButton);
+                issuesGrid,  applyFixesButton);
     }
 
     private void exportIssuesWithCodeFix() {
