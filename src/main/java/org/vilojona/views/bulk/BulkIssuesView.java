@@ -114,7 +114,7 @@ public class BulkIssuesView extends VerticalLayout {
         var openInSonarQubeButton = new Button("Open Selected Issue In SonarQube Server");
         openInSonarQubeButton.addClickListener(e -> {
             var selectedIssue = issuesGrid.asSingleSelect().getValue();
-            if (selectedIssue != null) {
+            if (selectedIssue != null) {g
                 getUI().ifPresent(ui -> ui.getPage().open(getSonarQubeIssueLink(selectedIssue.getKey())));
             } else {
                 Notification.show("No issue selected");
@@ -254,6 +254,22 @@ public class BulkIssuesView extends VerticalLayout {
 
     private String getCodeFile(String component) {
         // Call the SonarQube API to get the issues
+        var httpConnector = HttpConnector.newBuilder()
+                .url(sonarqubeUrlEdit.getValue())
+                .credentials(sonarqubeUserEdit.getValue(), sonarqubePasswordEdit.getValue())
+                .build();
+        var wsClient = WsClientFactories.getDefault().newClient(httpConnector);
+        var fileCodeRequest = new RawRequest();
+        fileCodeRequest.setKey(component);
+        return new String(wsClient.sources().raw(fileCodeRequest).getBytes());
+    }
+
+    private String getCodeFile1(String component) {
+        // Call the SonarQube API to get the issues
+        //TODO nothing
+        String pepe;
+        var toto=1;
+        var lkjahsldjfhasldkfhasdkljhadskljhla = "";
         var httpConnector = HttpConnector.newBuilder()
                 .url(sonarqubeUrlEdit.getValue())
                 .credentials(sonarqubeUserEdit.getValue(), sonarqubePasswordEdit.getValue())
