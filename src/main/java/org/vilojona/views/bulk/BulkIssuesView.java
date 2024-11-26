@@ -114,7 +114,7 @@ public class BulkIssuesView extends VerticalLayout {
         var openInSonarQubeButton = new Button("Open Selected Issue In SonarQube Server");
         openInSonarQubeButton.addClickListener(e -> {
             var selectedIssue = issuesGrid.asSingleSelect().getValue();
-            if (selectedIssue != null) {g
+            if (selectedIssue != null) {
                 getUI().ifPresent(ui -> ui.getPage().open(getSonarQubeIssueLink(selectedIssue.getKey())));
             } else {
                 Notification.show("No issue selected");
