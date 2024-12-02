@@ -1,4 +1,4 @@
-package org.vilojona.views;
+package org.vilojona.sonarqubedashboard.views;
 
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
