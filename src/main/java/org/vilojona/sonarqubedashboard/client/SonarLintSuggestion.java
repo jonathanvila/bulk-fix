@@ -1,4 +1,4 @@
-package org.vilojona.views.bulk;
+package org.vilojona.sonarqubedashboard.client;
 
 import java.util.List;
 
